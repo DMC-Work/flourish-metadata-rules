@@ -10,13 +10,13 @@ pc = ChildPredicates()
 
 @register()
 class ChildVisitRuleGroup(CrfRuleGroup):
-    
+
     child_clinician_notes = CrfRule(
         predicate=P('info_source', 'eq', PARTICIPANT),
         consequence=REQUIRED,
         alternative=NOT_REQUIRED,
         target_models=[f'{app_label}.childcliniciannotes'])
-    
+
     birth_exam = CrfRule(
         predicate=P('is_present', 'eq', YES),
         consequence=REQUIRED,
@@ -124,31 +124,12 @@ class ChildVisitRuleGroup(CrfRuleGroup):
         target_models=[f'{app_label}.tblabresultsadol', ]
     )
 
-    child_tb_screening = CrfRule(
-        predicate=pc.func_child_tb_screening_required,
+    young_adult_locator_crf = CrfRule(
+        predicate=pc.func_18_years_old,
         consequence=REQUIRED,
         alternative=NOT_REQUIRED,
-        target_models=[f'{app_label}.childtbscreening', ]
+        target_models=[f'{app_label}.youngadultlocatorcrf',]
     )
-
-    child_tb_referral_outcome = CrfRule(
-        predicate=pc.func_child_tb_referral_outcome,
-        consequence=REQUIRED,
-        alternative=NOT_REQUIRED,
-        target_models=[f'{app_label}.childtbreferraloutcome',]
-    )
-
-    infant_hiv_testing = CrfRule(
-        predicate=pc.func_hiv_infant_testing,
-        consequence=REQUIRED,
-        alternative=NOT_REQUIRED,
-        target_models=[f'{app_label}.infanthivtesting', ])
-
-    safi_stigma = CrfRule(
-        predicate=pc.func_heu_status_disclosed,
-        consequence=REQUIRED,
-        alternative=NOT_REQUIRED,
-        target_models=[f'{app_label}.childsafistigma', ])
 
     class Meta:
         app_label = app_label
