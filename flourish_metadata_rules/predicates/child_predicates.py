@@ -4,7 +4,7 @@ from dateutil.relativedelta import relativedelta
 from django.apps import apps as django_apps
 from django.db.models import Q
 from edc_base.utils import age, get_utcnow
-from edc_constants.constants import FEMALE, IND, NO, OTHER, PENDING, POS, YES
+from edc_constants.constants import FEMALE, IND, NO, PENDING, POS, YES
 from edc_metadata_rules import PredicateCollection
 from edc_reference.models import Reference
 
@@ -31,11 +31,8 @@ class ChildPredicates(PredicateCollection):
     infant_hiv_test_model = f'{app_label}.infanthivtesting'
     tb_hivtesting_model = f'{app_label}.hivtestingadol'
     infant_arv_proph_model = f'{app_label}.infantarvprophylaxis'
-    young_adult_locator_model = 'flourish_child.youngadultlocator'
-
-    @property
-    def young_adult_locator_cls(self):
-        return django_apps.get_model(self.young_adult_locator_model)
+    relationship_father_involvement_model = (
+        f'{maternal_app_label}.relationshipfatherinvolvement')
 
     @property
     def tb_presence_model_cls(self):
@@ -398,17 +395,6 @@ class ChildPredicates(PredicateCollection):
         """
         return int(visit.visit_code[:4]) % 4 == 0
 
-    def func_18_years_old(self, visit, **kwargs):
-
-        is_adolescent = self.get_child_age(visit, **kwargs).years >= 18
-
-        is_quarterly = 'qt' in visit.schedule_name or 'quart' in visit.schedule_name
-
-        locator_exists = self.young_adult_locator_cls.objects.filter(
-            subject_identifier=visit.subject_identifier).exists()
-
-        return is_adolescent and is_quarterly and not locator_exists
-
     def func_2000D(self, visit, **kwargs):
         """
         Returns True if visit is 2000D
@@ -534,11 +520,17 @@ class ChildPredicates(PredicateCollection):
                 timedelta(weeks=6)
             ).exists()
 
+        child_age = self.get_child_age(visit=visit)
+
+        child_age_in_months = (child_age.years * 12) + child_age.months
+
         hiv_status = self.get_latest_maternal_hiv_status(
             visit=visit).hiv_status
-        if hiv_status == POS:
+
+        if (hiv_status == POS and self.func_consent_study_pregnant(visit=visit)):
             if (self.newly_enrolled(visit=visit)
-                    and visit.visit_code in ['2001', '2003']):
+                    and visit.visit_code in ['2001', '2003', '3000', '3000A', '3000B',
+                                             '3000C']):
                 return True
 
             if visit.visit_code == '2002':
@@ -588,4 +580,46 @@ class ChildPredicates(PredicateCollection):
 
     def func_tbreferaladol_required(self, visit=None, **kwargs):
 
-        return self.func_tbhivtesting(visit=visit) or self.func_tb_lab_results(visit=visit) or self.func_visit_screening(visit=visit) or self.func_diagnosed_with_tb(visit=visit)
+        return self.func_tbhivtesting(visit=visit) or self.func_tb_lab_results(
+            visit=visit) or self.func_visit_screening(
+            visit=visit) or self.func_diagnosed_with_tb(visit=visit)
+
+    def get_previous_appt_instance(self, appointment):
+
+        previous_appt = appointment.__class__.objects.filter(
+            subject_identifier=appointment.subject_identifier,
+            timepoint__lt=appointment.timepoint,
+            schedule_name__startswith=appointment.schedule_name[:7],
+            visit_code_sequence=0).order_by('timepoint').last()
+
+        return previous_appt or appointment.previous_by_timepoint
+
+    def func_child_tb_screening_required(self, visit=None, **kwargs):
+        """Returns true if child tb screening is required
+        """
+        child_tb_scrining_model = f'{self.app_label}.childtbscreening'
+        child_tb_scrining_model_cls = django_apps.get_model(
+            child_tb_scrining_model)
+        latest_obj = child_tb_scrining_model_cls.objects.filter(
+            child_visit__subject_identifier=visit.subject_identifier
+        ).order_by('-report_datetime').first()
+        tests = ['chest_xray_results',
+                 'sputum_sample_results',
+                 'blood_test_results',
+                 'urine_test_results',
+                 'skin_test_results']
+        return any([getattr(latest_obj, field, None) == PENDING
+                    for field in tests]) if latest_obj else True
+
+    def func_heu_status_disclosed(self, visit, **kwargs):
+        disclosure_crfs = ['flourish_caregiver.hivdisclosurestatusa',
+                           'flourish_caregiver.hivdisclosurestatusb',
+                           'flourish_caregiver.hivdisclosurestatusc']
+
+        for crf in disclosure_crfs:
+            model_cls = django_apps.get_model(crf)
+            disclosed_status = model_cls.objects.filter(
+                associated_child_identifier=visit.subject_identifier,
+                disclosed_status=YES).exists()
+            if disclosed_status:
+                return self.func_hiv_exposed(visit)

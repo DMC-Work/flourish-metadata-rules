@@ -124,13 +124,6 @@ class ChildVisitRuleGroup(CrfRuleGroup):
         target_models=[f'{app_label}.tblabresultsadol', ]
     )
 
-    young_adult_locator_crf = CrfRule(
-        predicate=pc.func_18_years_old,
-        consequence=REQUIRED,
-        alternative=NOT_REQUIRED,
-        target_models=[f'{app_label}.youngadultlocatorcrf',]
-    )
-
     class Meta:
         app_label = app_label
         source_model = f'{app_label}.childvisit'
